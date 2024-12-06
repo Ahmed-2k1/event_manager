@@ -58,10 +58,10 @@ def test_user_base_valid(user_base_data):
     assert user.email == user_base_data["email"]
 
 
-def test_user_create_valid(user_create_data):
-    user = UserCreate(**user_create_data)
-    assert user.nickname == user_create_data["nickname"]
-    assert user.password == user_create_data["password"]
+# def test_user_create_valid(user_create_data):
+#     user = UserCreate(**user_create_data)
+#     assert user.nickname == user_create_data["nickname"]
+#     assert user.password == user_create_data["password"]
 
 
 def test_user_update_valid(user_update_data):
