@@ -72,6 +72,13 @@ class UserCreate(UserBase):
                 "Password must contain at least one special character.")
         return value
 
+    @validator("nickname", pre=True, always=True)
+    def validate_nickname(cls, value: Optional[str]) -> str:
+        if value and not value.isalnum():
+            raise ValueError(
+                "Nickname must only contain alphanumeric characters.")
+        return value
+
 class UserUpdate(UserBase):
     email: Optional[EmailStr] = Field(None, example="john.doe@example.com")
     nickname: Optional[str] = Field(None, min_length=3, pattern=r'^[\w-]+$', example="john_doe123")

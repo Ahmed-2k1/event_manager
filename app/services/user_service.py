@@ -2,10 +2,10 @@ from builtins import Exception, bool, classmethod, int, str
 from datetime import datetime, timezone
 import secrets
 from typing import Optional, Dict, List
-from pydantic import ValidationError
-from sqlalchemy import func, null, update, select
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import ValidationError  # type: ignore
+from sqlalchemy import func, null, update, select  # type: ignore
+from sqlalchemy.exc import SQLAlchemyError  # type: ignore
+from sqlalchemy.ext.asyncio import AsyncSession  # type: ignore
 from app.dependencies import get_email_service, get_settings
 from app.models.user_model import User
 from app.schemas.user_schemas import UserCreate, UserUpdate
@@ -18,6 +18,7 @@ import logging
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
 
 class UserService:
     @classmethod
@@ -51,32 +52,71 @@ class UserService:
 
     @classmethod
     async def create(cls, session: AsyncSession, user_data: Dict[str, str], email_service: EmailService) -> Optional[User]:
+        """
+        Create a new user with validation, nickname handling, and email verification.
+
+        Args:
+            session (AsyncSession): Database session for database access.
+            user_data (Dict[str, str]): Dictionary containing user details.
+            email_service (EmailService): Service for sending verification emails.
+
+        Returns:
+            Optional[User]: The newly created user or None if creation fails.
+        """
         try:
+            # Validate user input
             validated_data = UserCreate(**user_data).model_dump()
-            existing_user = await cls.get_by_email(session, validated_data['email'])
+
+            # Check if the email already exists
+            existing_user = await cls.get_by_email(session, validated_data["email"])
             if existing_user:
-                logger.error("User with given email already exists.")
+                logger.error("User with the given email already exists.")
                 return None
-            validated_data['hashed_password'] = hash_password(validated_data.pop('password'))
+
+            # Hash the password
+            validated_data["hashed_password"] = hash_password(validated_data.pop("password"))
+
+            # Handle nickname
+            if "nickname" not in validated_data or not validated_data["nickname"]:
+                # Generate a unique nickname if not provided
+                new_nickname = generate_nickname()
+                while await cls.get_by_nickname(session, new_nickname):
+                    new_nickname = generate_nickname()
+                validated_data["nickname"] = new_nickname
+            else:
+                # Validate provided nickname for uniqueness
+                existing_nickname = await cls.get_by_nickname(session, validated_data["nickname"])
+                if existing_nickname:
+                    logger.warning(
+                        f"Provided nickname '{validated_data['nickname']}' already exists. Generating a unique one."
+                    )
+                    new_nickname = generate_nickname()
+                    while await cls.get_by_nickname(session, new_nickname):
+                        new_nickname = generate_nickname()
+                    validated_data["nickname"] = new_nickname
+
+            # Create the user
             new_user = User(**validated_data)
             new_user.verification_token = generate_verification_token()
-            new_nickname = generate_nickname()
-            while await cls.get_by_nickname(session, new_nickname):
-                new_nickname = generate_nickname()
-            new_user.nickname = new_nickname
+
             session.add(new_user)
             await session.commit()
+
+            # Send verification email
             await email_service.send_verification_email(new_user)
-            
+
             return new_user
+
         except ValidationError as e:
             logger.error(f"Validation error during user creation: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error during user creation: {e}")
             return None
 
     @classmethod
     async def update(cls, session: AsyncSession, user_id: UUID, update_data: Dict[str, str]) -> Optional[User]:
         try:
-            # validated_data = UserUpdate(**update_data).dict(exclude_unset=True)
             validated_data = UserUpdate(**update_data).dict(exclude_unset=True)
 
             if 'password' in validated_data:
@@ -114,7 +154,6 @@ class UserService:
     @classmethod
     async def register_user(cls, session: AsyncSession, user_data: Dict[str, str], get_email_service) -> Optional[User]:
         return await cls.create(session, user_data, get_email_service)
-    
 
     @classmethod
     async def login_user(cls, session: AsyncSession, email: str, password: str) -> Optional[User]:
@@ -142,7 +181,6 @@ class UserService:
     async def is_account_locked(cls, session: AsyncSession, email: str) -> bool:
         user = await cls.get_by_email(session, email)
         return user.is_locked if user else False
-
 
     @classmethod
     async def reset_password(cls, session: AsyncSession, user_id: UUID, new_password: str) -> bool:
@@ -181,7 +219,7 @@ class UserService:
         result = await session.execute(query)
         count = result.scalar()
         return count
-    
+
     @classmethod
     async def unlock_user_account(cls, session: AsyncSession, user_id: UUID) -> bool:
         user = await cls.get_by_id(session, user_id)
